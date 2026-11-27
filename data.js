@@ -4,12 +4,12 @@ const scene = (title = '', caption = '', image = '') => ({
 
 export const example = {
   post: {
-    main: scene('Blue hour on the ridge', 'The last orange light reached the clouds just as the valley went quiet.', 'blue-hour'),
-    context: scene('Wait for the light to return', 'Ten minutes after sunset, the warm light came back. Staying for that second change made the frame.', 'alpenglow'),
-    grade: 'warm',
+    main: scene('The red landing', 'One figure, one flight of stairs, and a rectangle of late light.', 'red-landing'),
+    context: scene('Study in hard light', 'The skylight divides the concrete into two planes. I waited for the figure to reach the edge of the light.', 'red-landing'),
+    grade: 'original',
   },
   story: {
-    opening: scene('The last train left.', 'The rain has eased. There are two ways home from here.', 'tokyo'),
+    opening: scene('The last train left.', 'The platform is empty. Two ways out are still lit.', 'last-platform'),
     routes: [
       {
         name: 'Follow the lights',
@@ -28,6 +28,20 @@ export const example = {
     ],
   },
 };
+
+export function refreshStockExamples(saved) {
+  const samples = [
+    [saved.post.main, scene('Blue hour on the ridge', 'The last orange light reached the clouds just as the valley went quiet.', 'blue-hour'), example.post.main],
+    [saved.post.context, scene('Wait for the light to return', 'Ten minutes after sunset, the warm light came back. Staying for that second change made the frame.', 'alpenglow'), example.post.context],
+    [saved.story.opening, scene('The last train left.', 'The rain has eased. There are two ways home from here.', 'tokyo'), example.story.opening],
+  ];
+  for (const [current, previous, replacement] of samples) {
+    if (current && !current.effect && !current.gesture &&
+        Object.entries(previous).every(([field, value]) => current[field] === value)) {
+      Object.assign(current, replacement);
+    }
+  }
+}
 
 export const blank = {
   post: { main: scene(), context: scene(), grade: 'original' },
