@@ -18,6 +18,7 @@ const glyphs = {
   canvas: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6m-6 10h6"/>',
   tune: '<path d="M4 7h16m-16 10h16M9 4v6m6 4v6"/>',
   edit: '<path d="m13 6 5 5M5 19l4.5-1 10-10a2 2 0 0 0-4-4l-10 10z"/>',
+  focus: '<path d="M9 4H4v5m11-5h5v5m-5 11h5v-5M9 20H4v-5"/>',
 };
 
 const main = document.querySelector('#main');
@@ -44,6 +45,7 @@ let recording;
 let playhead = 0;
 let trackScene;
 let mobilePanel = 'canvas';
+let focusedCanvas = false;
 const videoFormat = motionFormat();
 
 function icon(name) {
@@ -458,10 +460,11 @@ function render() {
       </div>
       <div class="toolbar">
         <button type="button" class="button secondary" data-key="switch-project">${icon(usingExample ? 'plus' : 'image')}${switchLabel}</button>
+        <button type="button" class="button focus-toggle" data-key="focus-canvas" aria-pressed="${focusedCanvas}" aria-controls="canvas-pane" title="Focus on the canvas. Escape restores tools.">${icon('focus')}<span>${focusedCanvas ? 'Show tools' : 'Focus'}</span></button>
         <button type="button" class="button primary" data-key="export"${exporting ? ' disabled' : ''}>${icon('download')}Export PNG</button>
       </div>
     </div>
-    <div class="studio" data-mobile-panel="${mobilePanel}">
+    <div class="studio ${post ? 'post-studio' : 'story-studio'}" data-mobile-panel="${mobilePanel}" data-focused="${focusedCanvas}">
       <section id="canvas-pane" class="preview" aria-labelledby="preview-heading">
         <div class="preview-header"><h2 id="preview-heading">Canvas</h2><span>${post ? '1080 × 1350' : '1080 × 1920'}</span></div>
         <div class="workbench" id="preview-media">${previewMedia()}</div>
@@ -485,6 +488,14 @@ function render() {
 
 function focusButton(key) {
   screen.querySelector(`[data-key="${key}"]`)?.focus({ preventScroll: true });
+}
+
+function setCanvasFocus(active) {
+  focusedCanvas = active;
+  const button = screen.querySelector('[data-key="focus-canvas"]');
+  screen.querySelector('.studio').dataset.focused = String(active);
+  button.setAttribute('aria-pressed', String(active));
+  button.querySelector('span').textContent = active ? 'Show tools' : 'Focus';
 }
 
 async function exportAsset(animated = false) {
@@ -532,6 +543,10 @@ screen.addEventListener('click', event => {
   const control = event.target.closest('[data-key]');
   const key = control?.dataset.key;
   if (!key) return;
+  if (key === 'focus-canvas') {
+    setCanvasFocus(!focusedCanvas);
+    return;
+  }
   if (key === 'export' || key === 'motion-export') {
     void exportAsset(key === 'motion-export');
     return;
@@ -655,6 +670,18 @@ for (const event of ['lostpointercapture', 'pointerup', 'pointercancel']) {
   });
 }
 screen.addEventListener('keydown', event => {
+  const currentPanel = event.target.closest('[data-panel]');
+  if (currentPanel && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault();
+    const buttons = [...screen.querySelectorAll('[data-panel]')];
+    const index = buttons.indexOf(currentPanel);
+    const offset = event.key === 'ArrowLeft' ? -1 : 1;
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+      : (index + offset + buttons.length) % buttons.length;
+    buttons[next].focus();
+    buttons[next].click();
+    return;
+  }
   if (!event.target.matches('.effect-pin')) return;
   const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
   const direction = directions[event.key];
@@ -665,6 +692,12 @@ screen.addEventListener('keydown', event => {
   movePin(effect.x + direction[0] * .025, effect.y + direction[1] * .025);
   capturePoint();
   save();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || !focusedCanvas || !matchMedia('(min-width: 791px)').matches) return;
+  setCanvasFocus(false);
+  focusButton('focus-canvas');
 });
 
 screen.addEventListener('change', async event => {
