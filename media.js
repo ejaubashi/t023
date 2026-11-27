@@ -1,3 +1,5 @@
+import { loadImage, paintImage } from './effects.js';
+
 export async function preparePhoto(file) {
   const types = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
   if (!types.includes(file.type) || file.size > 15 * 1024 * 1024) {
@@ -45,26 +47,14 @@ function lines(ctx, text, width) {
   return result;
 }
 
-export async function downloadFrame(scene, type, filter) {
+export async function downloadFrame(scene, type, filter, effect, pathSources) {
   const canvas = document.createElement('canvas');
   canvas.width = 1080;
   canvas.height = type === 'post' ? 1350 : 1920;
   const { width, height } = canvas;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#202522';
-  ctx.fillRect(0, 0, width, height);
-
-  if (scene.photo) {
-    const image = new Image();
-    image.src = scene.photo;
-    await image.decode();
-    const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
-    const imageWidth = image.naturalWidth * scale;
-    const imageHeight = image.naturalHeight * scale;
-    ctx.filter = filter;
-    ctx.drawImage(image, (width - imageWidth) * .56, (height - imageHeight) * .5, imageWidth, imageHeight);
-    ctx.filter = 'none';
-  }
+  const [image, ...paths] = await Promise.all([scene.photo, ...pathSources].map(loadImage));
+  paintImage(ctx, image, filter, effect, paths);
 
   const padding = 64;
   const titleFont = '800 76px Manrope, sans-serif';
