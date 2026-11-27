@@ -1,0 +1,44 @@
+name: Publish Afterglow
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: afterglow-pages
+  cancel-in-progress: false
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.pages.outputs.mode }}
+    steps:
+      - name: Check the repository's Pages source
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mode=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type)
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: source
+    if: needs.source.outputs.mode == 'workflow'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - uses: actions/deploy-pages@v4
+        id: deployment
