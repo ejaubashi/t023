@@ -1,4 +1,4 @@
-import { example, blank, grades } from './data.js';
+import { example, blank, grades, refreshStockExamples } from './data.js';
 import { downloadFrame, downloadMotion, motionFormat, preparePhoto } from './media.js';
 import { loadImage, paintImage, templates } from './effects.js';
 import { exampleTake, finishTake, maxTake, positionAt, timeLabel } from './gesture.js';
@@ -23,6 +23,7 @@ const glyphs = {
 
 const main = document.querySelector('#main');
 const screen = document.querySelector('#screen');
+const toolbar = document.querySelector('#workspace-tools');
 const status = document.querySelector('#status');
 const navigation = document.querySelectorAll('[data-nav]');
 const storageKey = 'afterglow-studio.v1';
@@ -62,7 +63,10 @@ for (const element of document.querySelectorAll('[data-icon]')) element.innerHTM
 function loadProjects() {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));
-    if (saved?.example?.post && saved?.example?.story && saved?.draft?.post && saved?.draft?.story) return saved;
+    if (saved?.example?.post && saved?.example?.story && saved?.draft?.post && saved?.draft?.story) {
+      refreshStockExamples(saved.example);
+      return saved;
+    }
   } catch {
     // An empty or unavailable store starts a new editing session.
   }
@@ -453,18 +457,18 @@ function render() {
   const usingExample = views[page] === 'example';
   const title = post ? 'Post Studio' : 'Story Studio';
   const switchLabel = !usingExample ? 'Open example' : openedDrafts[page] ? 'Open draft' : 'New draft';
+  toolbar.innerHTML = `
+    <button type="button" class="button secondary" data-key="switch-project">${icon(usingExample ? 'plus' : 'image')}${switchLabel}</button>
+    <button type="button" class="button focus-toggle" data-key="focus-canvas" aria-pressed="${focusedCanvas}" aria-controls="canvas-pane" title="Focus on the canvas. Escape restores tools.">${icon('focus')}<span>${focusedCanvas ? 'Show tools' : 'Focus'}</span></button>
+    <button type="button" class="button primary" data-key="export"${exporting ? ' disabled' : ''}>${icon('download')}Export PNG</button>`;
   screen.innerHTML = `
-    <div class="workspace-bar">
-      <div class="workspace-name">
-        <h1>${title}</h1><span class="document-label"><i aria-hidden="true"></i>${usingExample ? 'Editable example' : 'Your draft'}</span>
-      </div>
-      <div class="toolbar">
-        <button type="button" class="button secondary" data-key="switch-project">${icon(usingExample ? 'plus' : 'image')}${switchLabel}</button>
-        <button type="button" class="button focus-toggle" data-key="focus-canvas" aria-pressed="${focusedCanvas}" aria-controls="canvas-pane" title="Focus on the canvas. Escape restores tools.">${icon('focus')}<span>${focusedCanvas ? 'Show tools' : 'Focus'}</span></button>
-        <button type="button" class="button primary" data-key="export"${exporting ? ' disabled' : ''}>${icon('download')}Export PNG</button>
-      </div>
-    </div>
     <div class="studio ${post ? 'post-studio' : 'story-studio'}" data-mobile-panel="${mobilePanel}" data-focused="${focusedCanvas}">
+      <div class="workspace-side">
+        <div class="workspace-name">
+          <h1>${title}</h1><span class="document-label"><i aria-hidden="true"></i>${usingExample ? 'Editable example' : 'Your draft'}</span>
+        </div>
+        ${effectsRail()}
+      </div>
       <section id="canvas-pane" class="preview" aria-labelledby="preview-heading">
         <div class="preview-header"><h2 id="preview-heading">Canvas</h2><span>${post ? '1080 × 1350' : '1080 × 1920'}</span></div>
         <div class="workbench" id="preview-media">${previewMedia()}</div>
@@ -472,7 +476,6 @@ function render() {
         ${motionDeck()}
       </section>
       ${mobileDock()}
-      ${effectsRail()}
       <section id="editor-pane" class="inspector" aria-label="${post ? 'Post editor' : 'Story editor'}">
         ${post ? postEditor() : storyEditor()}
       </section>
@@ -487,12 +490,12 @@ function render() {
 }
 
 function focusButton(key) {
-  screen.querySelector(`[data-key="${key}"]`)?.focus({ preventScroll: true });
+  document.querySelector(`[data-key="${key}"]`)?.focus({ preventScroll: true });
 }
 
 function setCanvasFocus(active) {
   focusedCanvas = active;
-  const button = screen.querySelector('[data-key="focus-canvas"]');
+  const button = toolbar.querySelector('[data-key="focus-canvas"]');
   screen.querySelector('.studio').dataset.focused = String(active);
   button.setAttribute('aria-pressed', String(active));
   button.querySelector('span').textContent = active ? 'Show tools' : 'Focus';
@@ -508,7 +511,7 @@ async function exportAsset(animated = false) {
   }
   const type = page;
   exporting = true;
-  const button = screen.querySelector('[data-key="export"]');
+  const button = toolbar.querySelector('[data-key="export"]');
   button.disabled = true;
   updateDeck();
   try {
@@ -525,12 +528,12 @@ async function exportAsset(animated = false) {
     notify(animated ? 'Motion export failed in this browser. Your take is still saved.' : 'The export failed. Try replacing the image and exporting again.');
   } finally {
     exporting = false;
-    screen.querySelector('[data-key="export"]').disabled = false;
+    toolbar.querySelector('[data-key="export"]').disabled = false;
     updateDeck();
   }
 }
 
-screen.addEventListener('click', event => {
+document.addEventListener('click', event => {
   const panel = event.target.closest('[data-panel]');
   if (panel) {
     mobilePanel = panel.dataset.panel;

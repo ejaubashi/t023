@@ -120,12 +120,11 @@ export function motionFormat() {
   return formats.find(format => MediaRecorder.isTypeSupported(format));
 }
 
-export async function downloadMotion(scene, type, filter, effect, pathSources, points) {
-  const format = motionFormat();
-  if (!format) throw new Error('Motion export is unavailable in this browser.');
-  const { canvas, draw } = await composition(scene, type, filter, effect, pathSources);
+async function recordClip(canvas, draw, points, format) {
   const duration = points.at(-1).t;
+  draw(positionAt(points, 0));
   const stream = canvas.captureStream(30);
+  const track = stream.getVideoTracks()[0];
   let timer;
   let recorder;
   try {
@@ -135,8 +134,9 @@ export async function downloadMotion(scene, type, filter, effect, pathSources, p
       recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
       recorder.onerror = () => reject(new Error('The browser could not encode the video.'));
       recorder.onstop = () => {
-        if (chunks.length) resolve(new Blob(chunks, { type: recorder.mimeType }));
-        else reject(new Error('The browser did not capture any frames.'));
+        const clip = new Blob(chunks, { type: recorder.mimeType });
+        if (clip.size < 1024) reject(new Error('The browser did not capture any frames.'));
+        else resolve(clip);
       };
       recorder.start();
       const start = performance.now();
@@ -144,7 +144,8 @@ export async function downloadMotion(scene, type, filter, effect, pathSources, p
         const elapsed = performance.now() - start;
         try {
           draw(positionAt(points, Math.min(elapsed, duration)));
-          if (elapsed >= duration) timer = setTimeout(() => recorder.stop(), 40);
+          track.requestFrame?.();
+          if (elapsed >= duration) timer = setTimeout(() => recorder.stop(), 100);
           else timer = setTimeout(tick, 1000 / 30);
         } catch (error) {
           reject(error);
@@ -152,13 +153,35 @@ export async function downloadMotion(scene, type, filter, effect, pathSources, p
       };
       tick();
     });
-    const blob = await result;
-    const extension = format.startsWith('video/mp4') ? 'mp4' : 'webm';
-    download(blob, scene.title, type, extension);
-    return extension.toUpperCase();
+    return await result;
   } finally {
     clearTimeout(timer);
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     stream.getTracks().forEach(track => track.stop());
   }
+}
+
+export async function downloadMotion(scene, type, filter, effect, pathSources, points) {
+  if (!motionFormat()) throw new Error('Motion export is unavailable in this browser.');
+  const { canvas, draw } = await composition(scene, type, filter, effect, pathSources);
+  // Keep the capture surface composited while short clips are being encoded.
+  canvas.className = 'capture-surface';
+  canvas.setAttribute('aria-hidden', 'true');
+  document.body.append(canvas);
+  try {
+    for (const format of formats.filter(format => MediaRecorder.isTypeSupported(format))) {
+      let blob;
+      try {
+        blob = await recordClip(canvas, draw, points, format);
+      } catch {
+        continue;
+      }
+      const extension = format.startsWith('video/mp4') ? 'mp4' : 'webm';
+      download(blob, scene.title, type, extension);
+      return extension.toUpperCase();
+    }
+  } finally {
+    canvas.remove();
+  }
+  throw new Error('The browser could not encode the video.');
 }
