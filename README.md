@@ -1,6 +1,6 @@
 # Afterglow Studio
 
-Afterglow is a browser-based creator tool with two screens for making social content. Each screen starts with an editable example and has a separate draft. The canvas sits between the effect controls and the editor on wide screens.
+Afterglow is a browser-based creator tool with two screens for making social content. Each screen starts with an editable example and has a separate draft. The canvas sits between the effect controls and the editor on wide screens. On a narrow screen, the **Canvas**, **Effects**, and **Edit** dock opens the tools below the live preview.
 
 - **Post Studio** lets you edit a main post and its context layer, upload photos, and compare a color treatment against the original by dragging a divider. Export the selected layer as a 1080 × 1350 PNG.
 - **Story Studio** lets you write an opening and two routes with independent frames and endings. Edit the choice labels, play both routes in the preview, and export individual frames as 1080 × 1920 PNGs. The interactive paths live in the studio preview.

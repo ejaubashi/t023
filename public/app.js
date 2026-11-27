@@ -15,6 +15,9 @@ const glyphs = {
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   play: '<path d="m8 5 11 7-11 7z"/>',
   pause: '<path d="M9 5v14M15 5v14"/>',
+  canvas: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6m-6 10h6"/>',
+  tune: '<path d="M4 7h16m-16 10h16M9 4v6m6 4v6"/>',
+  edit: '<path d="m13 6 5 5M5 19l4.5-1 10-10a2 2 0 0 0-4-4l-10 10z"/>',
 };
 
 const main = document.querySelector('#main');
@@ -40,6 +43,7 @@ let motion;
 let recording;
 let playhead = 0;
 let trackScene;
+let mobilePanel = 'canvas';
 const videoFormat = motionFormat();
 
 function icon(name) {
@@ -239,18 +243,32 @@ function effectsRail() {
   const selected = effectState();
   const tools = [page === 'post' ? 'prism' : 'fork', 'echo', 'none'];
   const showingEffect = selected.kind !== 'none' && !(page === 'post' && postTab === 'grade');
-  return `<aside class="effect-rail" aria-labelledby="effects-heading">
+  return `<aside id="effects-pane" class="effect-rail" aria-labelledby="effects-heading">
     <h2 id="effects-heading">Effects</h2>
     <div class="effect-list">${tools.map(kind => `<button class="effect-tool" type="button" data-key="effect-${kind}" aria-pressed="${selected.kind === kind}">
       <span class="effect-icon ${kind}" aria-hidden="true"><i></i><i></i><i></i></span>
       <span><strong>${effects[kind][0]}</strong><small>${effects[kind][1]}</small></span>
     </button>`).join('')}</div>
     ${showingEffect ? `<div class="effect-settings">
-      <label><span>Intensity</span><input data-effect="power" type="range" min="0" max="100" value="${Math.round(selected.power * 100)}"></label>
-      <label><span>Spread</span><input data-effect="size" type="range" min="0" max="100" value="${Math.round(selected.size * 100)}"></label>
+      <label><span>Intensity <span class="range-value" aria-hidden="true">${Math.round(selected.power * 100)}%</span></span><input data-effect="power" type="range" min="0" max="100" value="${Math.round(selected.power * 100)}"></label>
+      <label><span>Spread <span class="range-value" aria-hidden="true">${Math.round(selected.size * 100)}%</span></span><input data-effect="size" type="range" min="0" max="100" value="${Math.round(selected.size * 100)}"></label>
       ${activeScene().photo ? '<button class="orbit-button" type="button" data-key="orbit">Play orbit</button>' : ''}
     </div>` : ''}
   </aside>`;
+}
+
+const panels = [
+  ['canvas', 'Canvas', 'canvas', 'canvas-pane'],
+  ['effects', 'Effects', 'tune', 'effects-pane'],
+  ['edit', 'Edit', 'edit', 'editor-pane'],
+];
+
+function mobileDock() {
+  return `<div class="mobile-dock" role="group" aria-label="Workspace tools">
+    ${panels.map(([id, label, glyph, pane]) =>
+      `<button type="button" data-panel="${id}" aria-pressed="${id === mobilePanel}" aria-controls="${pane}">${icon(glyph)}<span>${label}</span></button>`
+    ).join('')}
+  </div>`;
 }
 
 async function paintPreview() {
@@ -433,27 +451,26 @@ function render() {
   const usingExample = views[page] === 'example';
   const title = post ? 'Post Studio' : 'Story Studio';
   const switchLabel = !usingExample ? 'Open example' : openedDrafts[page] ? 'Open draft' : 'New draft';
-  const description = post
-    ? 'Shape the image on canvas. Turn your drag into a motion take.'
-    : 'Shape a story frame, record its motion, then play either route.';
   screen.innerHTML = `
-    <div class="intro">
-      <div><h1>${title}<span aria-hidden="true">.</span></h1><p>${description}</p></div>
+    <div class="workspace-bar">
+      <div class="workspace-name">
+        <h1>${title}</h1><span class="document-label"><i aria-hidden="true"></i>${usingExample ? 'Editable example' : 'Your draft'}</span>
+      </div>
       <div class="toolbar">
         <button type="button" class="button secondary" data-key="switch-project">${icon(usingExample ? 'plus' : 'image')}${switchLabel}</button>
         <button type="button" class="button primary" data-key="export"${exporting ? ' disabled' : ''}>${icon('download')}Export PNG</button>
       </div>
     </div>
-    <div class="studio">
-      ${effectsRail()}
-      <section class="preview" aria-labelledby="preview-heading">
-        <div class="preview-header"><h2 id="preview-heading">Canvas</h2><span>${post ? '4:5' : '9:16'}</span></div>
+    <div class="studio" data-mobile-panel="${mobilePanel}">
+      <section id="canvas-pane" class="preview" aria-labelledby="preview-heading">
+        <div class="preview-header"><h2 id="preview-heading">Canvas</h2><span>${post ? '1080 × 1350' : '1080 × 1920'}</span></div>
         <div class="workbench" id="preview-media">${previewMedia()}</div>
         ${previewActions()}
         ${motionDeck()}
       </section>
-      <section class="inspector" aria-label="${post ? 'Post editor' : 'Story editor'}">
-        <div class="document-label"><span></span>${usingExample ? 'Editable example' : 'Your draft'}</div>
+      ${mobileDock()}
+      ${effectsRail()}
+      <section id="editor-pane" class="inspector" aria-label="${post ? 'Post editor' : 'Story editor'}">
         ${post ? postEditor() : storyEditor()}
       </section>
     </div>`;
@@ -503,6 +520,15 @@ async function exportAsset(animated = false) {
 }
 
 screen.addEventListener('click', event => {
+  const panel = event.target.closest('[data-panel]');
+  if (panel) {
+    mobilePanel = panel.dataset.panel;
+    panel.closest('.studio').dataset.mobilePanel = mobilePanel;
+    for (const button of screen.querySelectorAll('[data-panel]')) {
+      button.setAttribute('aria-pressed', String(button === panel));
+    }
+    return;
+  }
   const control = event.target.closest('[data-key]');
   const key = control?.dataset.key;
   if (!key) return;
@@ -572,6 +598,7 @@ screen.addEventListener('input', event => {
     return;
   }
   if (input.dataset.effect) {
+    input.closest('label').querySelector('.range-value').textContent = `${input.value}%`;
     activeScene().effect = { ...effectState(), [input.dataset.effect]: Number(input.value) / 100 };
     void paintPreview();
     clearTimeout(saveTimer);
