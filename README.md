@@ -1,33 +1,21 @@
-# Afterglow
+# Afterglow Studio
 
-Afterglow is a two-screen social web prototype. It uses an editorial feed and immersive story viewer to try out four social formats.
+Afterglow is a browser-based creator tool with two screens for making social content. Each screen starts with an editable example and has a separate draft.
 
-## Run locally
+- **Post Studio** lets you edit a main post and its context layer, upload photos, and compare a color treatment against the original by dragging a divider. Export the selected layer as a 1080 × 1350 PNG.
+- **Story Studio** lets you write an opening and two routes with independent frames and endings. Edit the choice labels, play both routes in the preview, and export individual frames as 1080 × 1920 PNGs. The interactive paths live in the studio preview.
 
-Run this command from the repository root.
+Drafts and edits are saved in the current browser. All image processing and exports run locally.
 
-```sh
-npm run dev
-```
+## Run the studio
 
-Open [http://localhost:3000](http://localhost:3000). The app uses plain JavaScript, HTML, and CSS with a Node.js 20+ development server. It needs no package installation. Use `PORT` to override the default port, or set `HOST=127.0.0.1` to bind to loopback only.
+From the repository root, run `npm run dev` and open [http://localhost:3000](http://localhost:3000). The project uses Node.js 20+ with no install step. Set `PORT` to use a different port.
 
-## Try the formats
-
-| Format | Where to try it |
-| --- | --- |
-| **Living posts** | On Feed, open the timeline on **Blue hour, off the grid.** Create a living post to add a chapter of your own. |
-| **Remixes** | Use **Remix** on a post. The resulting post links back to its source and credits the original author. |
-| **Shared stories** | On Stories, open **Poolside** and select **Add your frame**. Creating a story lets you choose whether to open it to contributions. |
-| **Reveal frames** | Open **Reveal frames** in the lab, or go to the second frame of **Night shift**. The photo and caption appear when you select **Tap to reveal**. |
-
-Use the arrow keys to move between frames and Escape to close the viewer. The demo uses one local profile, retains stories, and keeps new content and interactions in the current browser.
+The `public/` directory can be served by a static host. The GitHub Pages workflow deploys it to [Afterglow Studio](https://ejaubashi.github.io/t023/).
 
 ## Research
 
-- Mastodon exposes a post’s edit history. Afterglow turns that pattern into authored chapters visible directly on a living post. [Mastodon status methods](https://github.com/mastodon/documentation/blob/main/content/en/methods/statuses.md)
-- Bluesky’s composer embeds a quoted post while composing a new post. Afterglow keeps provenance visible on published remixes and links each one to the source. [Bluesky composer source](https://github.com/bluesky-social/social-app/blob/main/src/view/com/composer/Composer.tsx)
-- Pixelfed’s story model includes duration, expiration, and interactions. Afterglow explores a story as a sequence of attributed frames that can accept contributions. [Pixelfed story model](https://github.com/pixelfed/pixelfed/blob/dev/app/Models/Story.php)
-- Mastodon allows viewers to open obscured media on demand. Afterglow applies that explicit interaction to individual story frames. [Mastodon content warnings](https://github.com/mastodon/documentation/blob/main/content/en/user/posting.md#content-warnings-cw)
+- Mastodon makes earlier versions of a status available through edit history. Post Studio adapts layered context as something a creator prepares alongside the main frame. [Mastodon status history](https://github.com/mastodon/documentation/blob/main/content/en/methods/statuses.md#view-edit-history-of-a-status-history)
+- H5P branching scenarios model choices that lead to different content and endings. Story Studio applies that interaction to short, editable portrait frames. [H5P branching scenario](https://github.com/h5p/h5p-branching-scenario/blob/master/semantics.json)
 
-The demo photographs and portraits were generated for Afterglow. Manrope is bundled under the [SIL Open Font License](public/assets/manrope-OFL.txt).
+The example photos were generated for Afterglow. Manrope is bundled under the [SIL Open Font License](public/assets/manrope-OFL.txt).

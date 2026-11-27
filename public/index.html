@@ -3,36 +3,29 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#faf9f6">
-    <meta name="description" content="Afterglow is a social prototype for living posts, remixes, and shared stories.">
-    <title>Afterglow</title>
+    <meta name="theme-color" content="#161719">
+    <meta name="description" content="Afterglow is a two-screen studio for creating layered posts and branching stories.">
+    <title>Afterglow Studio</title>
     <link rel="icon" href="./assets/mark.svg" type="image/svg+xml">
     <link rel="preload" href="./assets/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="./styles.css">
     <script type="module" src="./app.js"></script>
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
-    <header class="sidebar">
-      <a class="brand" href="#feed" aria-label="Afterglow home">
-        <img width="32" height="32" alt="" src="./assets/mark.svg">
-        <span>afterglow</span>
-      </a>
-      <nav class="navigation" aria-label="Main">
-        <a href="#feed" data-nav="feed"><span data-icon="home"></span>Feed</a>
-        <a href="#stories" data-nav="stories"><span data-icon="stories"></span>Stories</a>
-      </nav>
-      <div class="profile">
-        <img class="avatar" src="./assets/sam.webp" width="38" height="38" alt="">
-        <div><strong>Sam Rivera</strong><span>Demo profile</span></div>
+    <a class="skip-link" href="#main">Skip to studio</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#post-studio" aria-label="Afterglow home"><img width="32" height="32" src="./assets/mark.svg" alt="">afterglow</a>
+        <nav aria-label="Studios">
+          <a data-nav="post" href="#post-studio"><span data-icon="layers"></span>Post Studio</a>
+          <a data-nav="story" href="#story-studio"><span data-icon="fork"></span>Story Studio</a>
+        </nav>
       </div>
     </header>
-    <main id="main" class="main" tabindex="-1">
-      <div id="screen" class="screen"></div>
-      <noscript>Enable JavaScript to explore the feed and stories.</noscript>
+    <main id="main" class="shell" tabindex="-1">
+      <div id="screen"></div>
+      <noscript>Enable JavaScript to use the studio.</noscript>
     </main>
-    <dialog id="story-dialog" class="story-dialog" aria-label="Story viewer"></dialog>
-    <dialog id="composer-dialog" class="composer-dialog" aria-labelledby="composer-heading"></dialog>
-    <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="status" class="toast" role="status" aria-live="polite"></div>
   </body>
 </html>
