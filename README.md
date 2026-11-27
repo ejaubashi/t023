@@ -13,6 +13,14 @@ Afterglow is a browser-based creator tool with two screens for making social con
 
 Drag on the artwork or focus the position marker and use the arrow keys. Adjust **Intensity** and **Spread** in the effect rail. **Play orbit** moves the effect along a loop, and **Freeze here** keeps the current position. PNG export renders the spatial effect at the current position. The Grade tab shows and exports the color treatment on its own.
 
+## Record motion
+
+1. Select **Record** and drag the effect directly on the canvas. You can also move the focused point with the arrow keys and select **Finish**.
+2. Use the gesture track to play, pause, or scrub through the recorded path. Each layer or story frame keeps its own take.
+3. Use **Export motion** to download a short video. The browser chooses MP4 or WebM. **Export PNG** captures the current frame.
+
+Takes run for up to four seconds. The built-in examples include a playable take.
+
 Drafts and edits are saved in the current browser. All image processing and exports run locally.
 
 ## Run the studio

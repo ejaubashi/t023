@@ -1,6 +1,7 @@
 import { example, blank, grades } from './data.js';
-import { downloadFrame, preparePhoto } from './media.js';
+import { downloadFrame, downloadMotion, motionFormat, preparePhoto } from './media.js';
 import { loadImage, paintImage, templates } from './effects.js';
+import { exampleTake, finishTake, maxTake, positionAt, timeLabel } from './gesture.js';
 
 const glyphs = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
@@ -12,6 +13,8 @@ const glyphs = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   download: '<path d="M12 3v12m-4-4 4 4 4-4M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  play: '<path d="m8 5 11 7-11 7z"/>',
+  pause: '<path d="M9 5v14M15 5v14"/>',
 };
 
 const main = document.querySelector('#main');
@@ -34,6 +37,10 @@ let exporting = false;
 let drag;
 let paintRequest = 0;
 let motion;
+let recording;
+let playhead = 0;
+let trackScene;
+const videoFormat = motionFormat();
 
 function icon(name) {
   return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${glyphs[name]}</svg>`;
@@ -104,6 +111,130 @@ function pathSources() {
     : [];
 }
 
+function canMove() {
+  return activeScene().photo && effectState().kind !== 'none' && !(page === 'post' && postTab === 'grade');
+}
+
+function take() {
+  if (!canMove()) return null;
+  const firstFrame = page === 'post' ? postTab === 'main' : route < 0;
+  return activeScene().gesture ?? (views[page] === 'example' && firstFrame ? exampleTake : null);
+}
+
+function motionDeck() {
+  return `<section class="motion-deck" aria-labelledby="motion-heading">
+    <div class="motion-top">
+      <div class="motion-title"><h2 id="motion-heading">Gesture track</h2><output id="motion-time" aria-live="off"></output></div>
+      <button class="motion-export" type="button" data-key="motion-export">${icon('download')}Export motion</button>
+    </div>
+    <div class="motion-transport">
+      <button class="record-button" type="button" data-key="record"><i aria-hidden="true"></i><span>Record</span></button>
+      <button class="play-button" type="button" data-key="play-take" aria-label="Play gesture">${icon('play')}</button>
+      <div class="motion-lane">
+        <svg viewBox="0 0 300 42" preserveAspectRatio="none" aria-hidden="true"><path></path></svg>
+        <input id="gesture-scrub" type="range" min="0" max="0" value="0" step="1" aria-label="Scrub gesture">
+      </div>
+    </div>
+    <p class="motion-hint" id="motion-hint"></p>
+  </section>`;
+}
+
+function updateDeck() {
+  const deck = screen.querySelector('.motion-deck');
+  const points = take();
+  const duration = points?.at(-1).t || 0;
+  const drawing = recording?.points;
+  const elapsed = drawing?.at(-1)?.t ?? playhead;
+  const record = deck.querySelector('[data-key="record"]');
+  record.querySelector('span').textContent = drawing?.length ? 'Finish' : recording ? 'Cancel' : 'Record';
+  record.setAttribute('aria-pressed', String(Boolean(recording)));
+  record.disabled = !canMove();
+  const play = deck.querySelector('[data-key="play-take"]');
+  const playing = motion?.kind === 'take';
+  play.disabled = !points || Boolean(recording);
+  const playLabel = playing ? 'Pause gesture' : 'Play gesture';
+  if (play.getAttribute('aria-label') !== playLabel) {
+    play.setAttribute('aria-label', playLabel);
+    play.innerHTML = icon(playing ? 'pause' : 'play');
+  }
+  deck.querySelector('[data-key="motion-export"]').disabled = !points || Boolean(recording) || exporting || !videoFormat;
+  deck.querySelector('#motion-time').textContent = `${timeLabel(elapsed)} / ${timeLabel(recording ? maxTake : duration)} s`;
+  deck.querySelector('#motion-hint').textContent = recording
+    ? 'Drag on the image or move the point with the arrow keys.'
+    : !canMove() ? 'Add a photo and choose an effect to record.'
+    : points ? (videoFormat ? 'Drag the playhead to pick a frame.' : 'This browser supports playback and PNG export.')
+    : 'Record a drag to create a motion take.';
+  const input = deck.querySelector('#gesture-scrub');
+  input.disabled = !points || Boolean(recording);
+  input.max = duration;
+  input.value = Math.min(playhead, duration);
+  input.setAttribute('aria-valuetext', `${timeLabel(playhead)} seconds`);
+  input.parentElement.style.setProperty('--playhead', `${duration ? playhead / duration * 100 : 0}%`);
+  const visible = drawing?.length ? drawing : points;
+  const length = drawing?.length ? maxTake : duration;
+  const path = visible ? visible.map((point, index) =>
+    `${index ? 'L' : 'M'} ${(point.t / length * 300).toFixed(1)} ${(33 - point.y * 25).toFixed(1)}`).join(' ') : '';
+  deck.querySelector('.motion-lane path').setAttribute('d', path);
+  const guide = screen.querySelector('.gesture-guide polyline');
+  if (guide) guide.setAttribute('points', drawing?.map(point =>
+    `${(point.x * 100).toFixed(1)},${(point.y * 100).toFixed(1)}`).join(' ') || '');
+}
+
+function capturePoint() {
+  if (!recording) return;
+  const now = performance.now();
+  recording.start ??= now;
+  const t = Math.min(maxTake, Math.round(now - recording.start));
+  const latest = recording.points.at(-1);
+  if (latest && t - latest.t < 12) return;
+  const { x, y } = effectState();
+  recording.points.push({ t, x, y });
+  if (t >= maxTake) endRecord();
+  else updateDeck();
+}
+
+function endRecord() {
+  const points = finishTake(recording.points);
+  const attempted = recording.points.length > 0;
+  recording = null;
+  if (points) {
+    activeScene().gesture = points;
+    playhead = points.at(-1).t;
+    activeScene().gestureTime = playhead;
+    save();
+    notify('Gesture recorded.');
+  } else if (attempted) notify('Move the point farther to record a gesture.');
+  updateDeck();
+}
+
+function playTake() {
+  const points = take();
+  if (!points || recording) return;
+  const paused = motion?.kind === 'take';
+  stopOrbit(true);
+  if (paused) return;
+  const duration = points.at(-1).t;
+  const start = performance.now() - (playhead >= duration ? 0 : playhead);
+  motion = { kind: 'take', position: positionAt(points, playhead), lastFrame: -Infinity };
+  const tick = time => {
+    if (motion?.kind !== 'take') return;
+    if (time - motion.lastFrame >= 1000 / 30) {
+      playhead = Math.min(duration, Math.max(0, time - start));
+      motion.position = positionAt(points, playhead);
+      motion.lastFrame = time;
+      showPin(motion.position);
+      updateDeck();
+      if (playhead >= duration) {
+        stopOrbit(true);
+        return;
+      }
+    }
+    motion.request = requestAnimationFrame(tick);
+  };
+  updateDeck();
+  motion.request = requestAnimationFrame(tick);
+}
+
 function effectsRail() {
   const selected = effectState();
   const tools = [page === 'post' ? 'prism' : 'fork', 'echo', 'none'];
@@ -161,16 +292,18 @@ function movePin(x, y) {
 
 function stopOrbit(freeze = false) {
   if (!motion) return;
-  const { request, position } = motion;
+  const { request, position, kind } = motion;
   cancelAnimationFrame(request);
   motion = null;
   const button = screen.querySelector('[data-key="orbit"]');
   if (button) button.textContent = 'Play orbit';
   if (freeze) {
     activeScene().effect = { ...effectState(), ...position };
+    if (kind === 'take') activeScene().gestureTime = playhead;
     showPin(activeScene().effect);
     save();
   }
+  if (screen.querySelector('.motion-deck')) updateDeck();
 }
 
 function toggleOrbit(button) {
@@ -262,6 +395,7 @@ function previewMedia() {
   return `<div class="artboard ${page}${compare ? ' compare' : ''}" style="--split:${split}%">
     ${photo || `<div class="empty-photo">${icon('image')}<span>Upload an image to begin</span></div>`}
     ${showEffect ? `<canvas class="effect-canvas" width="600" height="${page === 'post' ? 750 : 1067}" aria-hidden="true"></canvas>
+      <svg class="gesture-guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline></polyline></svg>
       <button class="effect-pin" type="button" aria-label="Effect position. Use arrow keys to move." style="left:${effect.x * 100}%;top:${effect.y * 100}%"></button>` : ''}
     ${compare ? `<img class="scene-photo treated" src="${escapeHtml(scene.photo)}" style="filter:${filter()}" alt="">
       <div class="compare-labels" aria-hidden="true"><span>Original</span><span>Treatment</span></div>
@@ -290,13 +424,18 @@ function previewActions() {
 
 function render() {
   stopOrbit();
+  recording = null;
+  if (trackScene !== activeScene()) {
+    trackScene = activeScene();
+    playhead = trackScene.gestureTime ?? 0;
+  }
   const post = page === 'post';
   const usingExample = views[page] === 'example';
   const title = post ? 'Post Studio' : 'Story Studio';
   const switchLabel = !usingExample ? 'Open example' : openedDrafts[page] ? 'Open draft' : 'New draft';
   const description = post
-    ? 'Bend the image around a point. Drag on the canvas to place the effect.'
-    : 'Pull two routes into one image, then play either ending.';
+    ? 'Shape the image on canvas. Turn your drag into a motion take.'
+    : 'Shape a story frame, record its motion, then play either route.';
   screen.innerHTML = `
     <div class="intro">
       <div><h1>${title}<span aria-hidden="true">.</span></h1><p>${description}</p></div>
@@ -311,6 +450,7 @@ function render() {
         <div class="preview-header"><h2 id="preview-heading">Canvas</h2><span>${post ? '4:5' : '9:16'}</span></div>
         <div class="workbench" id="preview-media">${previewMedia()}</div>
         ${previewActions()}
+        ${motionDeck()}
       </section>
       <section class="inspector" aria-label="${post ? 'Post editor' : 'Story editor'}">
         <div class="document-label"><span></span>${usingExample ? 'Editable example' : 'Your draft'}</div>
@@ -322,6 +462,7 @@ function render() {
     if (link.dataset.nav === page) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
+  updateDeck();
   void paintPreview();
 }
 
@@ -329,7 +470,7 @@ function focusButton(key) {
   screen.querySelector(`[data-key="${key}"]`)?.focus({ preventScroll: true });
 }
 
-async function exportPng() {
+async function exportAsset(animated = false) {
   if (exporting) return;
   stopOrbit(true);
   const scene = { ...activeScene() };
@@ -339,16 +480,25 @@ async function exportPng() {
   }
   const type = page;
   exporting = true;
-  screen.querySelector('[data-key="export"]').disabled = true;
+  const button = screen.querySelector('[data-key="export"]');
+  button.disabled = true;
+  updateDeck();
   try {
     const effect = type === 'post' && postTab === 'grade' ? null : effectState();
-    await downloadFrame(scene, type, filter(), effect, pathSources());
-    notify(type === 'post' ? 'Post layer downloaded as PNG.' : 'Story frame downloaded as PNG.');
+    if (animated) {
+      notify('Rendering your motion take…');
+      const format = await downloadMotion(scene, type, filter(), effect, pathSources(), take());
+      notify(`Motion downloaded as ${format}.`);
+    } else {
+      await downloadFrame(scene, type, filter(), effect, pathSources());
+      notify(type === 'post' ? 'Post layer downloaded as PNG.' : 'Story frame downloaded as PNG.');
+    }
   } catch {
-    notify('The export failed. Try replacing the image and exporting again.');
+    notify(animated ? 'Motion export failed in this browser. Your take is still saved.' : 'The export failed. Try replacing the image and exporting again.');
   } finally {
     exporting = false;
     screen.querySelector('[data-key="export"]').disabled = false;
+    updateDeck();
   }
 }
 
@@ -356,8 +506,21 @@ screen.addEventListener('click', event => {
   const control = event.target.closest('[data-key]');
   const key = control?.dataset.key;
   if (!key) return;
-  if (key === 'export') {
-    void exportPng();
+  if (key === 'export' || key === 'motion-export') {
+    void exportAsset(key === 'motion-export');
+    return;
+  }
+  if (key === 'record') {
+    stopOrbit(true);
+    if (recording) endRecord();
+    else {
+      recording = { points: [] };
+      updateDeck();
+    }
+    return;
+  }
+  if (key === 'play-take') {
+    playTake();
     return;
   }
   if (key === 'orbit') {
@@ -396,6 +559,18 @@ screen.addEventListener('click', event => {
 
 screen.addEventListener('input', event => {
   const input = event.target;
+  if (input.id === 'gesture-scrub') {
+    const time = Number(input.value);
+    stopOrbit(true);
+    playhead = time;
+    activeScene().gestureTime = time;
+    const point = positionAt(take(), time);
+    movePin(point.x, point.y);
+    updateDeck();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 220);
+    return;
+  }
   if (input.dataset.effect) {
     activeScene().effect = { ...effectState(), [input.dataset.effect]: Number(input.value) / 100 };
     void paintPreview();
@@ -425,6 +600,7 @@ screen.addEventListener('input', event => {
 function dragTo(event) {
   const box = drag.board.getBoundingClientRect();
   movePin((event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height);
+  capturePoint();
 }
 
 screen.addEventListener('pointerdown', event => {
@@ -443,6 +619,10 @@ screen.addEventListener('pointermove', event => {
 for (const event of ['lostpointercapture', 'pointerup', 'pointercancel']) {
   screen.addEventListener(event, pointer => {
     if (drag?.id !== pointer.pointerId) return;
+    if (recording?.points.length) {
+      capturePoint();
+      if (recording) endRecord();
+    }
     drag = null;
     save();
   });
@@ -456,6 +636,7 @@ screen.addEventListener('keydown', event => {
   stopOrbit(true);
   const effect = effectState();
   movePin(effect.x + direction[0] * .025, effect.y + direction[1] * .025);
+  capturePoint();
   save();
 });
 
