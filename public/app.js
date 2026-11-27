@@ -1,5 +1,6 @@
 import { example, blank, grades } from './data.js';
 import { downloadFrame, preparePhoto } from './media.js';
+import { loadImage, paintImage, templates } from './effects.js';
 
 const glyphs = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
@@ -30,6 +31,9 @@ let split = 50;
 let toastTimer;
 let saveTimer;
 let exporting = false;
+let drag;
+let paintRequest = 0;
+let motion;
 
 function icon(name) {
   return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${glyphs[name]}</svg>`;
@@ -77,6 +81,119 @@ function activeScene() {
 
 function filter() {
   return page === 'post' && postTab !== 'context' ? grades[project().grade].filter : 'none';
+}
+
+const effects = {
+  prism: ['Prism', 'Refract a point into six glass rings'],
+  echo: ['Echo', 'Pull a moment into displaced scanlines'],
+  fork: ['Fork Lens', 'Bring both routes into one frame'],
+  none: ['Clean', 'Remove the spatial effect'],
+};
+
+function effectState() {
+  const scene = activeScene();
+  if (scene.effect) return scene.effect;
+  const firstFrame = page === 'post' ? postTab !== 'context' : route < 0;
+  const mode = views[page] === 'example' && firstFrame ? templates[page].kind : 'none';
+  return { ...templates[page], kind: mode };
+}
+
+function pathSources() {
+  return page === 'story' && effectState().kind === 'fork'
+    ? project().routes.map(item => item.frames[0].photo)
+    : [];
+}
+
+function effectsRail() {
+  const selected = effectState();
+  const tools = [page === 'post' ? 'prism' : 'fork', 'echo', 'none'];
+  const showingEffect = selected.kind !== 'none' && !(page === 'post' && postTab === 'grade');
+  return `<aside class="effect-rail" aria-labelledby="effects-heading">
+    <h2 id="effects-heading">Effects</h2>
+    <div class="effect-list">${tools.map(kind => `<button class="effect-tool" type="button" data-key="effect-${kind}" aria-pressed="${selected.kind === kind}">
+      <span class="effect-icon ${kind}" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span><strong>${effects[kind][0]}</strong><small>${effects[kind][1]}</small></span>
+    </button>`).join('')}</div>
+    ${showingEffect ? `<div class="effect-settings">
+      <label><span>Intensity</span><input data-effect="power" type="range" min="0" max="100" value="${Math.round(selected.power * 100)}"></label>
+      <label><span>Spread</span><input data-effect="size" type="range" min="0" max="100" value="${Math.round(selected.size * 100)}"></label>
+      ${activeScene().photo ? '<button class="orbit-button" type="button" data-key="orbit">Play orbit</button>' : ''}
+    </div>` : ''}
+  </aside>`;
+}
+
+async function paintPreview() {
+  const canvas = screen.querySelector('.effect-canvas');
+  if (!canvas) return;
+  const request = ++paintRequest;
+  const effect = { ...effectState(), ...motion?.position };
+  const color = filter();
+  try {
+    const [photo, ...paths] = await Promise.all([activeScene().photo, ...pathSources()].map(loadImage));
+    if (request !== paintRequest || !canvas.isConnected) return;
+    paintImage(canvas.getContext('2d'), photo, color, effect, paths);
+    canvas.classList.add('ready');
+  } catch {
+    if (canvas.isConnected) notify('The preview could not load this image.');
+  }
+}
+
+function pinPosition(x, y) {
+  return {
+    x: Math.max(.03, Math.min(.97, x)),
+    y: Math.max(.03, Math.min(.97, y)),
+  };
+}
+
+function showPin(next) {
+  const pin = screen.querySelector('.effect-pin');
+  if (!pin) return;
+  pin.style.left = `${next.x * 100}%`;
+  pin.style.top = `${next.y * 100}%`;
+  pin.setAttribute('aria-label', `Effect position, ${Math.round(next.x * 100)}% across, ${Math.round(next.y * 100)}% down. Use arrow keys to move.`);
+  void paintPreview();
+}
+
+function movePin(x, y) {
+  activeScene().effect = { ...effectState(), ...pinPosition(x, y) };
+  showPin(activeScene().effect);
+}
+
+function stopOrbit(freeze = false) {
+  if (!motion) return;
+  const { request, position } = motion;
+  cancelAnimationFrame(request);
+  motion = null;
+  const button = screen.querySelector('[data-key="orbit"]');
+  if (button) button.textContent = 'Play orbit';
+  if (freeze) {
+    activeScene().effect = { ...effectState(), ...position };
+    showPin(activeScene().effect);
+    save();
+  }
+}
+
+function toggleOrbit(button) {
+  if (motion) {
+    stopOrbit(true);
+    return;
+  }
+  const { x, y } = effectState();
+  const origin = pinPosition(x, y);
+  const start = performance.now();
+  motion = { position: origin, lastFrame: -Infinity };
+  button.textContent = 'Freeze here';
+  const tick = time => {
+    if (!motion) return;
+    if (time - motion.lastFrame >= 1000 / 30) {
+      const phase = (time - start) * Math.PI * 2 / 3800;
+      motion.position = pinPosition(x + Math.sin(phase) * .16, y + (Math.cos(phase) - 1) * .105);
+      motion.lastFrame = time;
+      showPin(motion.position);
+    }
+    motion.request = requestAnimationFrame(tick);
+  };
+  motion.request = requestAnimationFrame(tick);
 }
 
 function notify(text) {
@@ -138,10 +255,14 @@ function storyEditor() {
 function previewMedia() {
   const scene = activeScene();
   const compare = page === 'post' && postTab === 'grade' && scene.photo;
+  const effect = effectState();
+  const showEffect = !compare && scene.photo && effect.kind !== 'none';
   const photo = scene.photo && `<img class="scene-photo" src="${escapeHtml(scene.photo)}" alt="" style="filter:${compare ? 'none' : filter()}">`;
   const progress = route < 0 ? 0 : frame + 1;
   return `<div class="artboard ${page}${compare ? ' compare' : ''}" style="--split:${split}%">
     ${photo || `<div class="empty-photo">${icon('image')}<span>Upload an image to begin</span></div>`}
+    ${showEffect ? `<canvas class="effect-canvas" width="600" height="${page === 'post' ? 750 : 1067}" aria-hidden="true"></canvas>
+      <button class="effect-pin" type="button" aria-label="Effect position. Use arrow keys to move." style="left:${effect.x * 100}%;top:${effect.y * 100}%"></button>` : ''}
     ${compare ? `<img class="scene-photo treated" src="${escapeHtml(scene.photo)}" style="filter:${filter()}" alt="">
       <div class="compare-labels" aria-hidden="true"><span>Original</span><span>Treatment</span></div>
       <span class="divider" aria-hidden="true"><span>${icon('split')}</span></span>
@@ -168,13 +289,14 @@ function previewActions() {
 }
 
 function render() {
+  stopOrbit();
   const post = page === 'post';
   const usingExample = views[page] === 'example';
   const title = post ? 'Post Studio' : 'Story Studio';
   const switchLabel = !usingExample ? 'Open example' : openedDrafts[page] ? 'Open draft' : 'New draft';
   const description = post
-    ? 'Build a post with a main image, a context layer, and your own color treatment.'
-    : 'Build a story that branches. Edit the opening, then create two ways it can end.';
+    ? 'Bend the image around a point. Drag on the canvas to place the effect.'
+    : 'Pull two routes into one image, then play either ending.';
   screen.innerHTML = `
     <div class="intro">
       <div><h1>${title}<span aria-hidden="true">.</span></h1><p>${description}</p></div>
@@ -184,8 +306,9 @@ function render() {
       </div>
     </div>
     <div class="studio">
+      ${effectsRail()}
       <section class="preview" aria-labelledby="preview-heading">
-        <div class="preview-header"><h2 id="preview-heading">Preview</h2><span>${post ? '4:5' : '9:16'}</span></div>
+        <div class="preview-header"><h2 id="preview-heading">Canvas</h2><span>${post ? '4:5' : '9:16'}</span></div>
         <div class="workbench" id="preview-media">${previewMedia()}</div>
         ${previewActions()}
       </section>
@@ -199,6 +322,7 @@ function render() {
     if (link.dataset.nav === page) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
+  void paintPreview();
 }
 
 function focusButton(key) {
@@ -207,6 +331,7 @@ function focusButton(key) {
 
 async function exportPng() {
   if (exporting) return;
+  stopOrbit(true);
   const scene = { ...activeScene() };
   if (!scene.photo && !scene.title.trim() && !scene.caption.trim()) {
     notify('Add an image or text before exporting.');
@@ -216,7 +341,8 @@ async function exportPng() {
   exporting = true;
   screen.querySelector('[data-key="export"]').disabled = true;
   try {
-    await downloadFrame(scene, type, filter());
+    const effect = type === 'post' && postTab === 'grade' ? null : effectState();
+    await downloadFrame(scene, type, filter(), effect, pathSources());
     notify(type === 'post' ? 'Post layer downloaded as PNG.' : 'Story frame downloaded as PNG.');
   } catch {
     notify('The export failed. Try replacing the image and exporting again.');
@@ -227,13 +353,22 @@ async function exportPng() {
 }
 
 screen.addEventListener('click', event => {
-  const key = event.target.closest('[data-key]')?.dataset.key;
+  const control = event.target.closest('[data-key]');
+  const key = control?.dataset.key;
   if (!key) return;
   if (key === 'export') {
     void exportPng();
     return;
   }
-  if (key.startsWith('post-')) postTab = key.slice(5);
+  if (key === 'orbit') {
+    toggleOrbit(control);
+    return;
+  }
+  if (key.startsWith('effect-')) {
+    if (page === 'post' && postTab === 'grade') postTab = 'main';
+    activeScene().effect = { ...effectState(), kind: key.slice(7) };
+    save();
+  } else if (key.startsWith('post-')) postTab = key.slice(5);
   else if (key.startsWith('route-') || /^preview-[01]$/.test(key)) {
     route = key === 'route-start' ? -1 : Number(key.at(-1));
     frame = 0;
@@ -261,6 +396,13 @@ screen.addEventListener('click', event => {
 
 screen.addEventListener('input', event => {
   const input = event.target;
+  if (input.dataset.effect) {
+    activeScene().effect = { ...effectState(), [input.dataset.effect]: Number(input.value) / 100 };
+    void paintPreview();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 220);
+    return;
+  }
   if (input.id === 'compare') {
     split = Number(input.value);
     input.closest('.compare').style.setProperty('--split', `${split}%`);
@@ -278,6 +420,43 @@ screen.addEventListener('input', event => {
   }
   clearTimeout(saveTimer);
   saveTimer = setTimeout(save, 220);
+});
+
+function dragTo(event) {
+  const box = drag.board.getBoundingClientRect();
+  movePin((event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height);
+}
+
+screen.addEventListener('pointerdown', event => {
+  const board = event.target.closest('.artboard:has(.effect-pin)');
+  if (!board || event.button !== 0 || !event.isPrimary) return;
+  stopOrbit(true);
+  const pin = board.querySelector('.effect-pin');
+  drag = { board, id: event.pointerId };
+  board.setPointerCapture(event.pointerId);
+  pin.focus({ preventScroll: true });
+  dragTo(event);
+});
+screen.addEventListener('pointermove', event => {
+  if (drag?.id === event.pointerId && drag.board.isConnected) dragTo(event);
+});
+for (const event of ['lostpointercapture', 'pointerup', 'pointercancel']) {
+  screen.addEventListener(event, pointer => {
+    if (drag?.id !== pointer.pointerId) return;
+    drag = null;
+    save();
+  });
+}
+screen.addEventListener('keydown', event => {
+  if (!event.target.matches('.effect-pin')) return;
+  const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  const direction = directions[event.key];
+  if (!direction) return;
+  event.preventDefault();
+  stopOrbit(true);
+  const effect = effectState();
+  movePin(effect.x + direction[0] * .025, effect.y + direction[1] * .025);
+  save();
 });
 
 screen.addEventListener('change', async event => {
