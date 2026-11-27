@@ -138,14 +138,18 @@ async function recordClip(canvas, draw, points, format) {
         if (clip.size < 1024) reject(new Error('The browser did not capture any frames.'));
         else resolve(clip);
       };
+      let start;
+      recorder.onstart = () => { start = performance.now(); };
       recorder.start();
-      const start = performance.now();
+      const requested = performance.now();
       const tick = () => {
-        const elapsed = performance.now() - start;
+        const now = performance.now();
+        const elapsed = start === undefined ? 0 : now - start;
         try {
+          if (start === undefined && now - requested > 4000) throw new Error('The encoder did not start.');
           draw(positionAt(points, Math.min(elapsed, duration)));
           track.requestFrame?.();
-          if (elapsed >= duration) timer = setTimeout(() => recorder.stop(), 100);
+          if (elapsed >= duration + 100) recorder.stop();
           else timer = setTimeout(tick, 1000 / 30);
         } catch (error) {
           reject(error);

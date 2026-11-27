@@ -1,5 +1,5 @@
-import { example, blank, grades, refreshStockExamples } from './data.js';
-import { downloadFrame, downloadMotion, motionFormat, preparePhoto } from './media.js';
+import { example, blank, grades, refreshStockExamples } from './data.js?v=print';
+import { downloadFrame, downloadMotion, motionFormat, preparePhoto } from './media.js?v=print';
 import { loadImage, paintImage, templates } from './effects.js';
 import { exampleTake, finishTake, maxTake, positionAt, timeLabel } from './gesture.js';
 
